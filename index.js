@@ -5,10 +5,10 @@ import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 dotenv.config();
 
-const saltRounds = 10;
-
 const app = express();
 const port = 3030;
+
+const saltRounds = 10;
 
 const users = [];
 
@@ -25,48 +25,59 @@ async function comparePassword(plainPassword, hashedPassword) {
 }
 
 app.post("/register", async function (req, res) {
-  const { nome, senha } = req.body;
-  const password = await generatePassword(senha);
-  // comparePassword(req.body.senha);
+  const { username, password } = req.body;
+  const existingUser = users.find((user) => user.username == username);
 
-  users.push({ nome, password });
+  if (existingUser)
+    return res.status(409).json({ message: "User already registered" });
 
-  res.status(201).json(users);
+  const hashedPassword = await generatePassword(password);
+
+  users.push({ username, password: hashedPassword });
+
+  res.status(201).json({
+    message: "User registered successfully!",
+    user: { username: username },
+  });
 });
 
 app.post("/login", async function (req, res) {
-  const { nome, senha } = req.body;
+  const { username, password } = req.body;
 
-  const user = users.find((user) => user.nome == nome);
+  const user = users.find((user) => user.username == username);
 
-  if (!user) {
-    res.status(404).json({ message: "no user" });
-  }
+  if (!user) return res.status(404).json({ message: "User not found" });
 
-  const passwordMatch = await bcrypt.compare(senha, user.password);
+  const isMatch = await comparePassword(password, user.password);
 
-  if (passwordMatch) {
-    const acessToken = jwt.sign(
-      { username: user.nome },
-      process.env.ACCESS_TOKEN_SECRET
-    );
-    res.status(200).json({ acessToken: acessToken });
-    return;
-  } else {
-    res.status(200).json({ message: "password doesnt match" });
-    return;
-  }
+  if (!isMatch) return res.status(401).json({ message: "Wrong password" });
+
+  const acessToken = jwt.sign(
+    { username: user.username },
+    process.env.ACCESS_TOKEN_SECRET,
+    { expiresIn: "60s" }
+  );
+
+  return res.status(200).json({ acessToken: acessToken });
 });
 
-app.get("/protected", function (req, res) {
+function authenticateToken(req, res, next) {
   const authHeader = req.headers["authorization"];
   const token = authHeader && authHeader.split(" ")[1];
 
-  jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, function (err, user) {
-    if (err) return res.sendStatus(401);
-  });
+  if (!token) return res.sendStatus(401);
 
-  return res.status(200).json({ message: "Ok" });
+  jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, function (err, user) {
+    if (err) return res.sendStatus(403);
+    req.user = user;
+    next();
+  });
+}
+
+app.get("/protected", authenticateToken, function (req, res) {
+  return res
+    .status(200)
+    .json({ message: `Access allowed for user ${req.user.username}!` });
 });
 
 app.listen(port, function () {
