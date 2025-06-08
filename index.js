@@ -20,10 +20,8 @@ async function generatePassword(plainPassword) {
   return bcrypt.hashSync(plainPassword, salt);
 }
 
-async function comparePassword(plainPassword) {
-  bcrypt.compare(plainPassword, password).then((res) => {
-    return res;
-  });
+async function comparePassword(plainPassword, hashedPassword) {
+  return await bcrypt.compare(plainPassword, hashedPassword);
 }
 
 app.post("/register", async function (req, res) {
@@ -74,3 +72,5 @@ app.get("/protected", function (req, res) {
 app.listen(port, function () {
   console.log(`Listening on port ${port}`);
 });
+
+export { generatePassword, comparePassword };
